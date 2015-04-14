@@ -1,18 +1,40 @@
 require "mac_dnc/version"
 require "fileutils"
+require "json"
+require 'serialport'
 
 class MacDNC
   def self.setup
   	desktop_path = File.expand_path("~/Desktop")
   	nc_file_path = File.join(desktop_path, "MacDNC Files")
-  	config_file  = File.join(nc_file_path, "mac_dnc_config.txt") 
+  	config_file  = File.join(nc_file_path, "mac_dnc_config.txt")
 
   	FileUtils.mkdir_p(nc_file_path)
-  	
+
+  	File.open(config_file, "w+") do |file|
+  		comments =  """
+  			// This is a comment
+  			// and some more comments...
+  		""".split.map {|x| puts x.inspect ; x.strip }.join("\n")
+
+  		file.write comments
+
+  		file.write JSON.pretty_generate({
+  			:serial_port => "/dev/cu.usbserial0",
+  			:baud => 9600,
+  			:data_bits => 7,
+  			:stop_bits => 1,
+  			:parity => "even"
+  		})
+  	end
+
+  	puts ">> The config files and NC files folder have been created on your desktop, press enter to setup MacDNC..."
+
+  	`read -p "" ; open #{config_file.gsub(' ', '\ ')}`
   end
 end
 
-require 'serialport'
+
 
 class RubyDNC
 
@@ -72,7 +94,7 @@ class RubyDNC
 			@serialport.eof?
 			byte = @serialport.getbyte
 			if byte > 32 && byte < 128
-				print byte.chr 
+				print byte.chr
 			else
 				print byte
 			end
@@ -82,6 +104,6 @@ class RubyDNC
 	end
 end
 
-dnc = RubyDNC.new()
-dnc.receive()
-dnc.send_file("/Users/aarongough/work/ruby_dnc/dnc_test.ngc")
+#dnc = RubyDNC.new()
+#dnc.receive()
+#dnc.send_file("/Users/aarongough/work/ruby_dnc/dnc_test.ngc")
