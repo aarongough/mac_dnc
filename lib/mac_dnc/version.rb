@@ -1,3 +1,3 @@
-module MacDnc
+class MacDNC
   VERSION = "0.0.1"
 end

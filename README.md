@@ -11,6 +11,9 @@ MacDNC provides a file server that runs on your Mac and can serve files to a mac
 Run the following from Terminal:
 
     $ gem install mac_dnc
+    $ macdnc setup
+
+The `macdnc setup` line will creat a folder on your Desktop called `MacDNC Files`, this is where you put files when you want to make them available to your machine too. It will also create a program launcher icon in your Applications folder.
 
 ## Usage
 

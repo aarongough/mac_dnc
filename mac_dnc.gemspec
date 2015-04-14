@@ -5,7 +5,7 @@ require 'mac_dnc/version'
 
 Gem::Specification.new do |spec|
   spec.name          = "mac_dnc"
-  spec.version       = MacDnc::VERSION
+  spec.version       = MacDNC::VERSION
   spec.authors       = ["Aaron Gough"]
   spec.email         = ["aaron.gough@gmail.com"]
   spec.summary       = %q{A DNC server for Mac OSX.}
