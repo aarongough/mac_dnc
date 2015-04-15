@@ -4,14 +4,20 @@ require "json"
 require 'serialport'
 
 class MacDNC
-  def self.setup
-  	desktop_path = File.expand_path("~/Desktop")
-  	nc_file_path = File.join(desktop_path, "MacDNC Files")
-  	config_file  = File.join(nc_file_path, "mac_dnc_config.txt")
 
-  	FileUtils.mkdir_p(nc_file_path)
+	DC1_TAPE_READER_ON  = 17
+	DC3_TAPE_READER_OFF	= 19
 
-  	File.open(config_file, "w+") do |file|
+  def initialize
+  	@desktop_path = File.expand_path("~/Desktop")
+  	@nc_file_path = File.join(desktop_path, "MacDNC Files")
+  	@config_file  = File.join(nc_file_path, "mac_dnc_config.txt")
+  end
+
+  def setup
+  	FileUtils.mkdir_p(@nc_file_path)
+
+  	File.open(@config_file, "w+") do |file|
   		comments =  """
   			// This is a comment
   			// and some more comments...
@@ -33,20 +39,65 @@ class MacDNC
   	`read -p "" ; open #{config_file.gsub(' ', '\ ')}`
   end
 
-  def self.file_list
-  	desktop_path = File.expand_path("~/Desktop")
-  	nc_file_path = File.join(desktop_path, "MacDNC Files")
+  def load_config
 
-  	nc_files = Dir[File.join(nc_file_path, "*.ngc")]
+  end
+
+  def nc_file_list
+  	nc_files = Dir[File.join(@nc_file_path, "*.ngc")]
   	nc_files.sort!
   	nc_files.map! do |file|
+  		file_header = File.open(file).read(1000)
+  		comment_name = file_header.match(/\(([\w\s]+)\)/)
+  		comment_name = comment_name.captures.first unless comment_name.nil?
+
   		{
 	  		:file_path => file,
 	  		:name => File.split(file)[1],
-	  		:comment_name => "FAKE COMMENT NAME"
-	  	}
+	  		:comment_name => comment_name
+	  	}	
   	end
+
+  	nc_files
   end
+
+  def file_path_for_number(file_number)
+
+  end
+
+  def listen
+
+  end
+
+  def send_file_listing
+
+  end
+
+  def send_file(header, file_path)
+
+  end
+
+  def stream_data(data, dnc_mode = true)
+
+  end
+
+  def received_tape_off?
+		while @serialport.stat.size > 0
+			return true if @serialport.get_byte == DC3_TAPE_READER_OFF
+		end
+		false
+	end
+
+	def wait_until_receive_tape_on
+		loop do
+			@serialport.eof?
+			break if @serialport.getbyte == DC1_TAPE_READER_ON
+		end
+	end
+
+	def log(string)
+		
+	end
 end
 
 
