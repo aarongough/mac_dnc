@@ -15,7 +15,7 @@ class MacDNC
   		comments =  """
   			// This is a comment
   			// and some more comments...
-  		""".split.map {|x| puts x.inspect ; x.strip }.join("\n")
+  		""".split("\n").map {|x| x.strip }.join("\n")
 
   		file.write comments
 
@@ -31,6 +31,21 @@ class MacDNC
   	puts ">> The config files and NC files folder have been created on your desktop, press enter to setup MacDNC..."
 
   	`read -p "" ; open #{config_file.gsub(' ', '\ ')}`
+  end
+
+  def self.file_list
+  	desktop_path = File.expand_path("~/Desktop")
+  	nc_file_path = File.join(desktop_path, "MacDNC Files")
+
+  	nc_files = Dir[File.join(nc_file_path, "*.ngc")]
+  	nc_files.sort!
+  	nc_files.map! do |file|
+  		{
+	  		:file_path => file,
+	  		:name => File.split(file)[1],
+	  		:comment_name => "FAKE COMMENT NAME"
+	  	}
+  	end
   end
 end
 

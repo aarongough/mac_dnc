@@ -6,4 +6,10 @@ describe MacDNC do
       MacDNC.setup()
     end
   end
+
+  describe ".file_list" do
+    it "should not raise an error" do
+      MacDNC.file_list()
+    end
+  end
 end
