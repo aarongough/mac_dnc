@@ -42,7 +42,7 @@ class MacDNC
 
   	puts ">> The config files and NC files folder have been created on your desktop, press enter to setup MacDNC..."
 
-  	`read -p "" ; open #{config_file.gsub(' ', '\ ')}`
+  	`read -p "" ; open #{@config_file.gsub(' ', '\ ')}`
   end
 
   def load_config
@@ -75,15 +75,10 @@ class MacDNC
   	nc_files = Dir[File.join(@nc_file_path, "*.ngc")]
   	nc_files.sort!
   	nc_files.map! do |file|
-  		file_header = File.open(file).read(1000)
-  		comment_name = file_header.match(/\(([\w\s]+)\)/)
-  		comment_name = comment_name.captures.first unless comment_name.nil?
-
   		{
 	  		:file_path => file,
-	  		:name => File.split(file)[1],
-	  		:comment_name => comment_name
-	  	}	
+	  		:name => File.split(file)[1]
+	  	}
   	end
 
   	nc_files
@@ -98,10 +93,40 @@ class MacDNC
   end
 
   def pretty_file_listing
-  	list = nc_file_list
+    list = nc_file_list.slice(0..19)
 
-  	output = ""
-  	output << "MacDNC Version: #{VERSION}, Running on: #{`echo $HOSTNAME`.strip}"
+  	output = "\r"
+  	output << "MacDNC Version: #{VERSION}, Running on: #{`echo $HOSTNAME`.strip}".ljust(64) + "\r"
+    output << "\r"
+    output << "  Program list:".ljust(64) + "\r"
+
+    program_index = []
+
+    20.times do |x|
+      puts x % 10
+
+      if list[x].nil?
+        entry  = "  #{x + 1})".ljust(31)
+      else
+        name = list[x][:name].upcase.gsub(/[^A-Z0-9\-\_\.]/, "_")
+        entry = "  #{x + 1}) #{name}".slice(0..28).ljust(31)
+      end
+
+      if program_index[x % 10].nil?
+        program_index[x % 10] = entry
+      else
+        program_index[x % 10] << entry + "\r"
+      end
+    end
+
+    output << program_index.join
+
+    output_height = output.count("\r") - 1
+    (14 - output_height).times {|x| output << "\r"}
+
+    output << "Enter DNC,[PROGAM NUMBER]+ or TA,[PROGRAM NUMBER]+ to proceed".ljust(64) + "\r"
+
+    output
   end
 
   def send_file_listing
