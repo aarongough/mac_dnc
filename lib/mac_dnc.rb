@@ -3,15 +3,21 @@ require "fileutils"
 require "json"
 require 'serialport'
 
+## Monitor is 16 characters tall
+## Monitor is 64 characters wide
+
+
 class MacDNC
 
 	DC1_TAPE_READER_ON  = 17
 	DC3_TAPE_READER_OFF	= 19
 
+	attr_accessor :port, :baud, :data_bits, :stop_bits, :parity, :serialport
+
   def initialize
   	@desktop_path = File.expand_path("~/Desktop")
-  	@nc_file_path = File.join(desktop_path, "MacDNC Files")
-  	@config_file  = File.join(nc_file_path, "mac_dnc_config.txt")
+  	@nc_file_path = File.join(@desktop_path, "MacDNC Files")
+  	@config_file  = File.join(@nc_file_path, "mac_dnc_config.txt")
   end
 
   def setup
@@ -40,7 +46,29 @@ class MacDNC
   end
 
   def load_config
+  	File.open(@config_file) do |file|
+  		config = JSON.load(file.read)
 
+  		@port = config["serial_port"]
+  		@baud = config["baud"]
+  		@data_bits = config["data_bits"]
+  		@stop_bits = config["stop_bits"]
+
+  		case config["parity"]
+  		when "even" then @parity = SerialPort::EVEN
+  		when "odd"	then @parity = SerialPort::ODD
+  		when "none" then @parity = SerialPort::NONE
+  		end
+  	end
+  end
+
+  def create_connection
+  	@serialport = SerialPort.new(@port, @baud, @data_bits, @stop_bits, @parity)
+		@serialport.flow_control = SerialPort::SOFT
+  end
+
+  def destroy_connection
+  	@serialport.close
   end
 
   def nc_file_list
@@ -62,11 +90,18 @@ class MacDNC
   end
 
   def file_path_for_number(file_number)
-
+  	nc_file_list[file_number - 1][:file_path]
   end
 
   def listen
 
+  end
+
+  def pretty_file_listing
+  	list = nc_file_list
+
+  	output = ""
+  	output << "MacDNC Version: #{VERSION}, Running on: #{`echo $HOSTNAME`.strip}"
   end
 
   def send_file_listing
@@ -96,7 +131,7 @@ class MacDNC
 	end
 
 	def log(string)
-		
+
 	end
 end
 
