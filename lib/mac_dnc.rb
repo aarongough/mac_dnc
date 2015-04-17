@@ -3,8 +3,8 @@ require "fileutils"
 require "json"
 require 'serialport'
 
-## Monitor is 16 characters tall
-## Monitor is 64 characters wide
+# Fadal CNC88 monitor is 16 characters tall
+# Fadal CNC88 monitor is 64 characters wide
 
 
 class MacDNC
@@ -89,7 +89,36 @@ class MacDNC
   end
 
   def listen
+    begin
+      @serialport.read unless @serialport.stat.size == 0 # clear input buffer
+      input = ""
+      loop do
+        @serialport.eof?
+        byte = @serialport.getbyte
+        break if byte == 43
+        inout << byte.chr
+      end
 
+      input = input.gsub("ENTER COMMAND> ", "").strip
+      input_parts = input.split(",")
+      command = input_parts[0]
+      parameter = input_parts[1]
+
+      case command
+      when "DIR"
+        send_file_listing()
+      when "TA"
+        path = file_path_for_number(parameter)
+        send_file(:tape, path)
+      when "DNC"
+        path = file_path_for_number(parameter)
+        send_file(:dnc, path)
+      else
+        stream_data("UNRECOGNIZED COMMAND\rBYE")
+      end
+    rescue Interrupt
+      @serialport.close
+    end
   end
 
   def pretty_file_listing
@@ -103,8 +132,6 @@ class MacDNC
     program_index = []
 
     20.times do |x|
-      puts x % 10
-
       if list[x].nil?
         entry  = "  #{x + 1})".ljust(31)
       else
@@ -124,21 +151,43 @@ class MacDNC
     output_height = output.count("\r") - 1
     (14 - output_height).times {|x| output << "\r"}
 
-    output << "Enter DNC,[PROGAM NUMBER]+ or TA,[PROGRAM NUMBER]+ to proceed".ljust(64) + "\r"
+    output << "Enter DNC,[PROGAM NUMBER]+ or TA,[PROGRAM NUMBER]+          BYE".ljust(64) + "\r"
 
     output
   end
 
   def send_file_listing
-
+    stream_data(pretty_file_listing.encode("US-ASCII"))
   end
 
-  def send_file(header, file_path)
+  def send_file(mode = :tape, file_path)
+    data = File.open(file_path).readlines
+    data = encode_data(data)
 
+    case mode
+    when :tape
+      stream_data("TA,1\r")
+    when :dnc
+      data = optimize_data_for_dnc(data)
+      stream_data("DNC\r")
+    end
+
+    wait_until_receive_tape_on
+    stream_data(data)
   end
 
-  def stream_data(data, dnc_mode = true)
+  def stream_data(data)
+    @serialport.write(data)
+  end
 
+  def encode_data(data)
+    data = data.map {|x| x.encode("US-ASCII")}      # Transcode to 7-bit ASCII
+    data = data.map {|x| x.strip + "\r"}            # Append a carriage return to each line
+  end
+
+  def optimize_data_for_dnc(data)
+    data = data.map {|x| x.gsub(/^N\d*\.?\d*/, "")} # Remove leading line numbers
+    data = data.map {|x| x.gsub(/\(.*/, "")}        # Remove comments
   end
 
   def received_tape_off?
@@ -149,6 +198,7 @@ class MacDNC
 	end
 
 	def wait_until_receive_tape_on
+    @serialport.read unless @serialport.stat.size == 0
 		loop do
 			@serialport.eof?
 			break if @serialport.getbyte == DC1_TAPE_READER_ON
@@ -156,80 +206,6 @@ class MacDNC
 	end
 
 	def log(string)
-
+    puts string
 	end
 end
-
-
-
-class RubyDNC
-
-	DC1_TAPE_READER_ON  = 17
-	DC3_TAPE_READER_OFF	= 19
-
-	def initialize(port = "/dev/cu.usbvirtuserial", baud = 9600, data_bits = 7, stop_bits = 1, parity = SerialPort::EVEN)
-		@baud = baud
-		@data_bits = data_bits
-		@stop_bits = stop_bits
-		@parity = parity
-		@port = port
-
-		@serialport = SerialPort.new(@port, @baud, @data_bits, @stop_bits, @parity)
-		@serialport.flow_control = SerialPort::SOFT
-
-		puts @serialport.get_modem_params
-	end
-
-	def send_file(file_path)
-		lines = File.open(file_path).readlines
-		lines = optimize_data(lines)
-
-		wait_until_receive_tape_on
-
-		lines.each do |line|
-			wait_until_receive_tape_on if received_tape_off?
-
-			puts line.inspect
-			@serialport.write(line)
-		end
-	end
-
-	def optimize_data(lines)
-		lines = lines.map {|x| x.encode("US-ASCII")}			# Transcode to 7-bit ASCII
-		lines = lines.map {|x| x.gsub(/^N\d*\.?\d*/, "")}	# Remove leading line numbers
-		lines = lines.map {|x| x.gsub(/\(.*/, "")}				# Remove comments
-		lines = lines.map {|x| x.strip + "\r"}						# Append a carriage return to each line
-	end
-
-	def received_tape_off?
-		while @serialport.stat.size > 0
-			return true if @serialport.get_byte == DC3_TAPE_READER_OFF
-		end
-		false
-	end
-
-	def wait_until_receive_tape_on
-		loop do
-			@serialport.eof?
-			break if @serialport.getbyte == DC1_TAPE_READER_ON
-		end
-	end
-
-	def receive
-		while true do
-			@serialport.eof?
-			byte = @serialport.getbyte
-			if byte > 32 && byte < 128
-				print byte.chr
-			else
-				print byte
-			end
-
-		  #puts(@serialport.getbyte)
-		end
-	end
-end
-
-#dnc = RubyDNC.new()
-#dnc.receive()
-#dnc.send_file("/Users/aarongough/work/ruby_dnc/dnc_test.ngc")
