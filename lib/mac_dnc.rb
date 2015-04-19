@@ -12,6 +12,8 @@ class MacDNC
 	DC1_TAPE_READER_ON  = 17
 	DC3_TAPE_READER_OFF	= 19
 
+	NEWLINE = 64.chr
+
 	attr_accessor :port, :baud, :data_bits, :stop_bits, :parity, :serialport
 
   def initialize
@@ -25,8 +27,10 @@ class MacDNC
 
   	File.open(@config_file, "w+") do |file|
   		comments =  """
-  			// This is a comment
-  			// and some more comments...
+  			// This is the config file for MacDNC
+  			// change the settings to suit your setup
+  			// but make sure to leave the file structure
+  			// as it is.
   		""".split("\n").map {|x| x.strip }.join("\n")
 
   		file.write comments
@@ -65,6 +69,7 @@ class MacDNC
   def create_connection
   	@serialport = SerialPort.new(@port, @baud, @data_bits, @stop_bits, @parity)
 		@serialport.flow_control = SerialPort::SOFT
+    @serialport.flush_output
   end
 
   def destroy_connection
@@ -85,53 +90,63 @@ class MacDNC
   end
 
   def file_path_for_number(file_number)
-  	nc_file_list[file_number - 1][:file_path]
+  	nc_file_list[file_number.to_i - 1][:file_path]
   end
 
   def listen
-    begin
-      @serialport.read unless @serialport.stat.size == 0 # clear input buffer
-      input = ""
-      loop do
-        @serialport.eof?
-        byte = @serialport.getbyte
-        break if byte == 43
-        inout << byte.chr
-      end
+    loop do
+      begin
+        @serialport.read unless @serialport.stat.size == 0 # clear input buffer
+        input = ""
+        loop do
+          @serialport.eof?
+          byte = @serialport.getbyte
+          puts byte
+          break if byte == 43
+          input << byte.chr
+        end
+  
+        puts input
+  
+        input = input.gsub("ENTER NEXT COMMAND", "").strip.split("\r").last
+        input_parts = input.split(",")
+        command = input_parts[0].strip
+        parameter = input_parts[1]
 
-      input = input.gsub("ENTER COMMAND> ", "").strip
-      input_parts = input.split(",")
-      command = input_parts[0]
-      parameter = input_parts[1]
-
-      case command
-      when "DIR"
-        send_file_listing()
-      when "TA"
-        path = file_path_for_number(parameter)
-        send_file(:tape, path)
-      when "DNC"
-        path = file_path_for_number(parameter)
-        send_file(:dnc, path)
-      else
-        stream_data("UNRECOGNIZED COMMAND\rBYE")
+        puts "COMMAND: " + command.inspect
+        puts "PARAMETER: " + parameter.inspect
+  
+        case command
+        when "DIR"
+          send_file_listing()
+        when "TA"
+          path = file_path_for_number(parameter)
+          send_file(:tape, path)
+        when "DNC"
+          path = file_path_for_number(parameter)
+          send_file(:dnc, path)
+        else
+          puts "UNRECOGNIZED COMMAND"
+          stream_data(NEWLINE + "UNRECOGNIZED COMMAND" + NEWLINE + "BYE\r")
+        end
+      rescue Interrupt
+        @serialport.close
+        raise Interrupt
       end
-    rescue Interrupt
-      @serialport.close
     end
   end
 
   def pretty_file_listing
-    list = nc_file_list.slice(0..19)
+    list = nc_file_list.slice(0..17)
 
-  	output = "\r"
-  	output << "MacDNC Version: #{VERSION}, Running on: #{`echo $HOSTNAME`.strip}".ljust(64) + "\r"
-    output << "\r"
-    output << "  Program list:".ljust(64) + "\r"
+  	output = ""
+  	output << NEWLINE + "MacDNC Version: #{VERSION}, Running on: #{`echo $HOSTNAME`.strip}".ljust(62) + NEWLINE
+    output << "".ljust(62) + NEWLINE
+    output << "  Program list:".ljust(62) + NEWLINE
 
     program_index = []
 
-    20.times do |x|
+    18.times do |x|
       if list[x].nil?
         entry  = "  #{x + 1})".ljust(31)
       else
@@ -139,19 +154,17 @@ class MacDNC
         entry = "  #{x + 1}) #{name}".slice(0..28).ljust(31)
       end
 
-      if program_index[x % 10].nil?
-        program_index[x % 10] = entry
+      if program_index[x % 9].nil?
+        program_index[x % 9] = entry
       else
-        program_index[x % 10] << entry + "\r"
+        program_index[x % 9] << entry.ljust(31) + NEWLINE
       end
     end
 
     output << program_index.join
-
-    output_height = output.count("\r") - 1
-    (14 - output_height).times {|x| output << "\r"}
-
-    output << "Enter DNC,[PROGAM NUMBER]+ or TA,[PROGRAM NUMBER]+          BYE".ljust(64) + "\r"
+    output << "".ljust(62) + NEWLINE
+    output << "Enter DNC,[PROGAM NUMBER]+ or TA,[PROGRAM NUMBER]+".ljust(62) + NEWLINE
+    output << "BYE\r"
 
     output
   end
@@ -161,15 +174,16 @@ class MacDNC
   end
 
   def send_file(mode = :tape, file_path)
-    data = File.open(file_path).readlines
+    data = File.open(file_path).read
+    data = data.split(/\r/)
     data = encode_data(data)
 
     case mode
     when :tape
-      stream_data("TA,1\r")
+      stream_data(NEWLINE + "TA,1\r")
     when :dnc
       data = optimize_data_for_dnc(data)
-      stream_data("DNC\r")
+      stream_data(NEWLINE + "DNC\r")
     end
 
     wait_until_receive_tape_on
@@ -177,7 +191,15 @@ class MacDNC
   end
 
   def stream_data(data)
-    @serialport.write(data)
+    if data.is_a?(String)
+      puts data
+      @serialport.write(data)
+    elsif data.is_a?(Array)
+      data.each do |line|
+        puts line
+        @serialport.write(line)
+      end
+    end
   end
 
   def encode_data(data)
@@ -187,6 +209,7 @@ class MacDNC
 
   def optimize_data_for_dnc(data)
     data = data.map {|x| x.gsub(/^N\d*\.?\d*/, "")} # Remove leading line numbers
+    data = data.map {|x| x.gsub(/^O\d*\.?\d*/, "")} # Remove program numbers
     data = data.map {|x| x.gsub(/\(.*/, "")}        # Remove comments
   end
 
